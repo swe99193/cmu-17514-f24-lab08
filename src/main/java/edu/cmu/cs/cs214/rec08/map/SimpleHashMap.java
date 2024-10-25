@@ -3,6 +3,8 @@ package edu.cmu.cs.cs214.rec08.map;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import net.jcip.annotations.ThreadSafe;
 
@@ -25,6 +27,7 @@ public class SimpleHashMap<K, V> {
     private final List<List<Entry<K, V>>> table;
 
     private final int numBuckets;
+    private final Lock[] locks;
 
     /**
      * Constructs a new hash map with a given number of buckets.
@@ -39,6 +42,14 @@ public class SimpleHashMap<K, V> {
         table = new ArrayList<>(this.numBuckets);
         for (int i = 0; i < numBuckets; i++) {
             table.add(new LinkedList<>());
+        }
+
+        // Initialize the array of locks with the specified size
+        locks = new Lock[numBuckets];
+        
+        // Instantiate a ReentrantLock for each element in the array
+        for (int i = 0; i < numBuckets; i++) {
+            locks[i] = new ReentrantLock();
         }
     }
 
@@ -55,14 +66,23 @@ public class SimpleHashMap<K, V> {
         if (key == null)
             throw new NullPointerException("Key can't be null.");
 
-        List<Entry<K,V>> bucket = table.get(hash(key));
-        for (Entry<K, V> e : bucket) {
-            if (e.key.equals(key)) {
-                V result = e.value;
-                e.value = value;
-                return result;
+        int hashVal = hash(key);
+        List<Entry<K,V>> bucket = table.get(hashVal);
+
+        locks[hashVal].lock();
+        
+        try {
+            for (Entry<K, V> e : bucket) {
+                if (e.key.equals(key)) {
+                    V result = e.value;
+                    e.value = value;
+                    return result;
+                }
             }
+        } finally {
+            locks[hashVal].unlock(); // Ensure the lock is released.
         }
+
 
         bucket.add(new Entry<>(key, value));
         return null;
@@ -75,11 +95,19 @@ public class SimpleHashMap<K, V> {
      * @return The value for the given key, or null if the key is not present.
      */
     public V get(K key) {
-        List<Entry<K,V>> bucket = table.get(hash(key));
-        for (Entry<K, V> e : bucket) {
-            if (e.key.equals(key)) {
-                return e.value;
+        int hashVal = hash(key);
+        List<Entry<K,V>> bucket = table.get(hashVal);
+
+        locks[hashVal].lock();
+
+        try {
+            for (Entry<K, V> e : bucket) {
+                if (e.key.equals(key)) {
+                    return e.value;
+                }
             }
+        } finally {
+            locks[hashVal].unlock(); // Ensure the lock is released.
         }
         return null;
     }
